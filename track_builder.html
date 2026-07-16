@@ -1,0 +1,1814 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WUTA-FSD Track Builder</title>
+<style>
+/* ============================================================
+   WUTA-FSD Track Builder — 深色都市天际线风
+   ============================================================ */
+:root {
+  --bg: #1a1d23;
+  --bg-panel: #22262e;
+  --bg-panel-2: #2a2f38;
+  --bg-hover: #333a45;
+  --bg-active: #3a4250;
+  --border: #3a4150;
+  --border-light: #4a5260;
+  --text: #e0e4ea;
+  --text-dim: #8a92a0;
+  --text-bright: #ffffff;
+  --accent: #4a9eff;
+  --accent-hover: #5aa8ff;
+  --blue: #1E90FF;
+  --yellow: #FFD700;
+  --orange: #FF8C00;
+  --green: #4caf50;
+  --red: #ef5350;
+  --purple: #A020F0;
+  --toolbar-w: 130px;
+  --panel-w: 260px;
+  --topbar-h: 44px;
+  --status-h: 36px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --mono: "SF Mono", "Consolas", "Monaco", monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* ───── 顶栏 ───── */
+#topbar {
+  height: var(--topbar-h);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+#topbar .logo {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-bright);
+  letter-spacing: 0.5px;
+}
+#topbar .logo span { color: var(--accent); }
+#topbar .divider { width: 1px; height: 22px; background: var(--border); }
+#topbar .spacer { flex: 1; }
+.topbar-btn {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font);
+  transition: all 0.15s;
+}
+.topbar-btn:hover { background: var(--bg-hover); border-color: var(--border-light); color: var(--text-bright); }
+.topbar-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.topbar-btn.primary:hover { background: var(--accent-hover); }
+
+/* ───── 主体 ───── */
+#main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ───── 左：工具栏 ───── */
+#toolbar {
+  width: var(--toolbar-w);
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.tool-group { padding: 8px; border-bottom: 1px solid var(--border); }
+.tool-group-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  padding: 0 2px;
+}
+.tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-family: var(--font);
+  transition: all 0.12s;
+  text-align: left;
+}
+.tool-btn:hover { background: var(--bg-hover); }
+.tool-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.tool-btn .icon {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; flex-shrink: 0;
+}
+.tool-btn.shortcut-hint {
+  font-size: 10px; color: var(--text-dim); margin-left: auto;
+}
+.tool-btn.active .shortcut-hint { color: rgba(255,255,255,0.6); }
+
+/* ───── 中：画布 ───── */
+#canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #14171c;
+}
+#canvas {
+  display: block;
+  width: 100%; height: 100%;
+  cursor: crosshair;
+}
+#canvas.panning { cursor: grabbing; }
+
+/* 画布内悬浮提示 */
+#canvas-hint {
+  position: absolute;
+  top: 12px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(34,38,46,0.92);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+
+/* ───── 右：属性面板 ───── */
+#panel {
+  width: var(--panel-w);
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.panel-section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.panel-section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.field { margin-bottom: 10px; }
+.field label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: var(--text-dim); margin-bottom: 4px;
+}
+.field label .val { color: var(--text-bright); font-family: var(--mono); font-size: 11.5px; }
+.field input[type="number"], .field input[type="text"] {
+  width: 100%;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-bright);
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-family: var(--mono);
+}
+.field input:focus { outline: none; border-color: var(--accent); }
+.field input[type="range"] { width: 100%; accent-color: var(--accent); }
+.field-row { display: flex; gap: 8px; }
+.field-row .field { flex: 1; }
+.seg-type-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.seg-type-badge.straight { background: #4a9eff; }
+.seg-type-badge.arc { background: #7c4dff; }
+.seg-type-badge.hairpin { background: #ff7043; }
+.seg-type-badge.slalom { background: #26a69a; }
+.seg-type-badge.chicane { background: #ab47bc; }
+.seg-type-badge.start { background: #66bb6a; }
+
+.validate-result { border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+.validate-result.ok { background: rgba(76,175,80,0.12); color: var(--green); border: 1px solid rgba(76,175,80,0.25); }
+.validate-result.err { background: rgba(239,83,80,0.12); color: var(--red); border: 1px solid rgba(239,83,80,0.25); }
+
+.btn-danger {
+  width: 100%; padding: 6px;
+  background: rgba(239,83,80,0.1); border: 1px solid rgba(239,83,80,0.3);
+  color: var(--red); border-radius: 5px; cursor: pointer;
+  font-size: 12px; font-family: var(--font);
+}
+.btn-danger:hover { background: rgba(239,83,80,0.2); }
+.panel-empty {
+  padding: 20px 14px; text-align: center;
+  color: var(--text-dim); font-size: 12px; line-height: 1.7;
+}
+
+/* ───── 底：状态栏 ───── */
+#statusbar {
+  height: var(--status-h);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 11.5px;
+  flex-shrink: 0;
+  gap: 16px;
+}
+#statusbar .status-msg { flex: 1; display: flex; align-items: center; gap: 6px; }
+#statusbar .status-msg.ok { color: var(--green); }
+#statusbar .status-msg.warn { color: var(--orange); }
+#statusbar .status-msg.err { color: var(--red); }
+#statusbar .stats { display: flex; gap: 14px; color: var(--text-dim); font-family: var(--mono); }
+#statusbar .stats span b { color: var(--text); }
+
+/* ───── 帮助面板 ───── */
+#help-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 100;
+  justify-content: center; align-items: center;
+}
+#help-overlay.show { display: flex; }
+#help-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px 32px;
+  max-width: 520px; width: 90%;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+#help-box h2 { font-size: 18px; margin-bottom: 6px; color: var(--text-bright); }
+#help-box .sub { color: var(--text-dim); font-size: 12px; margin-bottom: 18px; }
+#help-box kbd {
+  display: inline-block;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-bright);
+  margin: 0 2px;
+}
+#help-box table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+#help-box td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+#help-box td:first-child { white-space: nowrap; }
+#help-box .close-hint { margin-top: 16px; text-align: center; color: var(--text-dim); font-size: 11.5px; }
+
+/* ───── 预览弹窗 ───── */
+#preview-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 100;
+  justify-content: center; align-items: center;
+}
+#preview-overlay.show { display: flex; }
+#preview-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  max-width: 90vw; max-height: 90vh;
+  display: flex; flex-direction: column; gap: 12px;
+}
+#preview-box h3 { font-size: 15px; color: var(--text-bright); }
+#preview-box canvas { border-radius: 6px; background: #14171c; }
+#preview-box .info { font-size: 12px; color: var(--text-dim); text-align: center; }
+
+/* ───── 通用滚动条 ───── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #5a6270; }
+</style>
+</head>
+<body>
+
+<!-- ===== 顶栏 ===== -->
+<div id="topbar">
+  <div class="logo">WUTA<span>-FSD</span> Track Builder</div>
+  <div class="divider"></div>
+  <button class="topbar-btn primary" id="btn-save">💾 保存 YAML</button>
+  <button class="topbar-btn" id="btn-preview">👁 预览</button>
+  <div class="spacer"></div>
+  <button class="topbar-btn" id="btn-help">⌨ 快捷键 (H)</button>
+</div>
+
+<!-- ===== 主体 ===== -->
+<div id="main">
+
+  <!-- 左：工具栏 -->
+  <div id="toolbar">
+    <div class="tool-group">
+      <div class="tool-group-title">赛道段</div>
+      <button class="tool-btn active" data-tool="straight">
+        <span class="icon">▭</span> 直道 <span class="shortcut-hint">1</span>
+      </button>
+      <button class="tool-btn" data-tool="arc">
+        <span class="icon">◠</span> 弯道 <span class="shortcut-hint">2</span>
+      </button>
+      <button class="tool-btn" data-tool="hairpin">
+        <span class="icon">↩</span> 发夹弯 <span class="shortcut-hint">3</span>
+      </button>
+      <button class="tool-btn" data-tool="slalom">
+        <span class="icon">⋮</span> 蛇形穿桩 <span class="shortcut-hint">4</span>
+      </button>
+      <button class="tool-btn" data-tool="chicane">
+        <span class="icon">∿</span> 复合弯 <span class="shortcut-hint">5</span>
+      </button>
+    </div>
+    <div class="tool-group">
+      <div class="tool-group-title">操作</div>
+      <button class="tool-btn" data-tool="start">
+        <span class="icon">▲</span> 起点
+      </button>
+      <button class="tool-btn" id="btn-undo">
+        <span class="icon">↶</span> 撤销 <span class="shortcut-hint">⌃Z</span>
+      </button>
+      <button class="tool-btn" id="btn-close">
+        <span class="icon">◯</span> 闭合赛道
+      </button>
+      <button class="tool-btn" id="btn-clear">
+        <span class="icon">🗑</span> 清空
+      </button>
+      <button class="tool-btn" id="btn-fit">
+        <span class="icon">⤢</span> 适应视图 <span class="shortcut-hint">F</span>
+      </button>
+    </div>
+    <div class="tool-group">
+      <div class="tool-group-title">赛道类型</div>
+      <button class="tool-btn active" data-tracktype="autocross">AutoX</button>
+      <button class="tool-btn" data-tracktype="trackdrive">Trackdrive</button>
+    </div>
+  </div>
+
+  <!-- 中：画布 -->
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div id="canvas-hint"></div>
+  </div>
+
+  <!-- 右：属性面板 -->
+  <div id="panel">
+    <div id="panel-content">
+      <div class="panel-empty">
+        在画布上<strong>点击</strong>铺设第一段赛道，<br>
+        或点击已铺设段进行编辑。<br><br>
+        按 <kbd style="background:var(--bg-panel-2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:11px;">H</kbd> 查看快捷键
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== 底：状态栏 ===== -->
+<div id="statusbar">
+  <div class="status-msg ok" id="status-msg">就绪 — 点击画布开始铺设</div>
+  <div class="stats">
+    <span>段 <b id="stat-seg">0</b></span>
+    <span>总长 <b id="stat-len">0.0</b>m</span>
+    <span>蓝 <b id="stat-blue">0</b></span>
+    <span>黄 <b id="stat-yellow">0</b></span>
+    <span>橙 <b id="stat-orange">0</b></span>
+  </div>
+</div>
+
+<!-- ===== 帮助弹窗 ===== -->
+<div id="help-overlay">
+  <div id="help-box">
+    <h2>WUTA-FSD Track Builder</h2>
+    <div class="sub">都市天际线风格的交互式赛道铺设工具</div>
+    <table>
+      <tr><td><kbd>1</kbd>–<kbd>5</kbd></td><td>切换段类型（直道/弯道/发夹/蛇形/复合）</td></tr>
+      <tr><td><kbd>R</kbd></td><td>旋转铺设方向 90° / 弯道左右翻转</td></tr>
+      <tr><td><kbd>Q</kbd> <kbd>E</kbd></td><td>弯道半径微调 −1m / +1m</td></tr>
+      <tr><td>滚轮</td><td>画布缩放 / 铺设时调节主参数</td></tr>
+      <tr><td>左键点击</td><td>铺设段 / 选中段</td></tr>
+      <tr><td>拖拽控制点</td><td>编辑已铺设段的参数</td></tr>
+      <tr><td>右键/中键拖拽</td><td>平移画布</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Esc</kbd></td><td>撤销上一段</td></tr>
+      <tr><td><kbd>Del</kbd> / <kbd>Backspace</kbd></td><td>删除选中段</td></tr>
+      <tr><td><kbd>G</kbd></td><td>切换网格吸附（15°/45°</td></tr>
+      <tr><td><kbd>F</kbd></td><td>适应视图（全赛道可见）</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>导出 YAML</td></tr>
+      <tr><td><kbd>H</kbd></td><td>显示/隐藏本帮助</td></tr>
+    </table>
+    <div class="close-hint">按 <kbd>H</kbd> 或点击外部关闭</div>
+  </div>
+</div>
+
+<!-- ===== 预览弹窗 ===== -->
+<div id="preview-overlay">
+  <div id="preview-box">
+    <h3>📐 赛道预览</h3>
+    <canvas id="preview-canvas" width="1200" height="800"></canvas>
+    <div class="info" id="preview-info"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   WUTA-FSD Track Builder — 全部逻辑
+   ============================================================ */
+
+// ───── 常量 ─────
+const W = 1.5;                  // 赛道半宽 (m)，全宽 3m
+const STEP = 2.5;               // 锥筒步长 (m)
+const SNAP_DEG = 15;            // 角度吸附步进
+const UNDO_MAX = 50;            // 撤销栈深度
+
+// 段类型元数据
+const TOOL_TYPES = ['straight','arc','hairpin','slalom','chicane'];
+const SEG_LABELS = {
+  straight:'直道', arc:'弯道', hairpin:'发夹弯', slalom:'蛇形穿桩', chicane:'复合弯', start:'起点'
+};
+const SEG_ICONS = {
+  straight:'▭', arc:'◠', hairpin:'↩', slalom:'⋮', chicane:'∿', start:'▲'
+};
+
+// ───── 全局状态 ─────
+const state = {
+  tool: 'straight',            // 当前工具
+  trackType: 'autocross',      // 赛道类型
+  start: { x:0, y:0, yaw:0 },  // 起点位姿
+  segments: [],                // 赛道段列表
+  selected: -1,                // 当前选中段索引（-1=未选）
+  // 视图
+  cam: { x:0, y:0, scale:8 },  // 相机偏移(像素) + 缩放(像素/米)
+  snap: true,                   // 网格吸附开关
+  // 交互
+  mouse: { x:0, y:0, down:false, button:0 },
+  draggingPoint: null,          // {seg_idx, point_key}
+  panning: false,
+  panStart: null,
+  // 撤销栈
+  undoStack: [],
+  // 渲染
+  flashTime: 0,                // 闪烁时间戳
+  // 弧段
+  arcRadius: 20,               // 上次使用的弧段半径（记忆）
+  // 闭合
+  closed: false,               // 赛道是否已闭合
+};
+
+// ───── DOM 引用 ─────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const previewCanvas = document.getElementById('preview-canvas');
+const previewCtx = previewCanvas.getContext('2d');
+const canvasWrap = document.getElementById('canvas-wrap');
+const canvasHint = document.getElementById('canvas-hint');
+const panelContent = document.getElementById('panel-content');
+const statusMsg = document.getElementById('status-msg');
+const domStat = {
+  seg: document.getElementById('stat-seg'),
+  len: document.getElementById('stat-len'),
+  blue: document.getElementById('stat-blue'),
+  yellow: document.getElementById('stat-yellow'),
+  orange: document.getElementById('stat-orange'),
+};
+
+/* ============================================================
+   几何核心 — 移植自 _build_autocross.py
+   ============================================================ */
+
+// 在(x,y)处放一对蓝/黄锥筒（垂直于 heading 方向偏移 ±W）
+function placeRing(cones, x, y, h) {
+  cones.blue.push([x - W*Math.sin(h), y + W*Math.cos(h)]);
+  cones.yellow.push([x + W*Math.sin(h), y - W*Math.cos(h)]);
+}
+
+// 直道：从 (x0,y0) 沿 h 方向走 L 米
+function segStraight(x0, y0, h, L) {
+  const cones = { blue:[], yellow:[], orange:[] };
+  const n = Math.max(2, Math.round(L / STEP));
+  for (let i = 1; i <= n; i++) {
+    const d = L * i / n;
+    placeRing(cones, x0 + d*Math.cos(h), y0 + d*Math.sin(h), h);
+  }
+  return { cones, end: { x: x0 + L*Math.cos(h), y: y0 + L*Math.sin(h), yaw: h } };
+}
+
+// 弯道：从 (x0,y0) 沿 h 方向，以 R 半径、turn 方向、deg 角度转弯
+function segArc(x0, y0, h, R, turn, deg) {
+  const cones = { blue:[], yellow:[], orange:[] };
+  const cx = x0 + turn*R*Math.cos(h + Math.PI/2);
+  const cy = y0 + turn*R*Math.sin(h + Math.PI/2);
+  const phi0 = Math.atan2(y0 - cy, x0 - cx);
+  const A = deg * Math.PI / 180;
+  const n = Math.max(2, Math.round(R*A / STEP));
+  for (let i = 1; i <= n; i++) {
+    const f = i / n;
+    const phi = phi0 + turn*f*A;
+    const nx = cx + R*Math.cos(phi);
+    const ny = cy + R*Math.sin(phi);
+    placeRing(cones, nx, ny, h + turn*f*A);
+  }
+  const phi1 = phi0 + turn*A;
+  return { cones, end: {
+    x: cx + R*Math.cos(phi1),
+    y: cy + R*Math.sin(phi1),
+    yaw: h + turn*A,
+  }};
+}
+
+// 蛇形穿桩：从 (x0,y0) 沿 h 方向，n 个桩、spacing 间距、lateral 横向偏移
+function segSlalom(x0, y0, h, n, spacing, lateral) {
+  const cones = { blue:[], yellow:[], orange:[] };
+  let xs = x0, ys = y0;
+  for (let i = 0; i < n; i++) {
+    xs += spacing * Math.cos(h);
+    ys += spacing * Math.sin(h);
+    const s = (i % 2 === 0) ? lateral : -lateral;
+    const px = xs + s*(-Math.sin(h));
+    const py = ys + s*(Math.cos(h));
+    placeRing(cones, px, py, h);
+  }
+  return { cones, end: { x: xs, y: ys, yaw: h } };
+}
+
+// 复合弯（半径递减连续弯）：一串 arc 拼接
+function segChicane(x0, y0, h, radii, turn, angleEach) {
+  const cones = { blue:[], yellow:[], orange:[] };
+  let px = x0, py = y0, ph = h;
+  const end = { x: x0, y: y0, yaw: h };
+  for (const R of radii) {
+    const r = segArc(px, py, ph, R, turn, angleEach);
+    cones.blue.push(...r.cones.blue);
+    cones.yellow.push(...r.cones.yellow);
+    cones.orange.push(...r.cones.orange);
+    px = r.end.x; py = r.end.y; ph = r.end.yaw;
+  }
+  end.x = px; end.y = py; end.yaw = ph;
+  return { cones, end };
+}
+
+// 起点线
+function segStart(x, y, h) {
+  const cones = { blue:[], yellow:[], orange:[] };
+  cones.orange.push([x - W*Math.sin(h), y + W*Math.cos(h)]);
+  cones.orange.push([x + W*Math.sin(h), y - W*Math.cos(h)]);
+  return { cones, end: { x, y, yaw: h } };
+}
+
+// 根据段参数生成几何（返回 cones + end 位姿）
+function buildSegment(seg, startPose) {
+  const { x:x0, y:y0, yaw:h } = startPose;
+  switch (seg.type) {
+    case 'straight': return segStraight(x0, y0, h, seg.length);
+    case 'arc':
+      if (seg._end) return buildArcFromEndpoints({x:x0,y:y0}, h, seg._end, seg.radius);
+      return segArc(x0, y0, h, seg.radius, seg.turn, seg.angle);
+    case 'hairpin':
+      if (seg._end) return buildArcFromEndpoints({x:x0,y:y0}, h, seg._end, seg.radius);
+      return segArc(x0, y0, h, seg.radius, seg.turn, 180);
+    case 'slalom':   return segSlalom(x0, y0, h, seg.pylons, seg.spacing, seg.lateral);
+    case 'chicane':
+      if (seg._subArcs) {
+        const cones={blue:[],yellow:[],orange:[]};
+        let pose={x:x0,y:y0,yaw:h};
+        for (const a of seg._subArcs) {
+          const r=buildSegment({type:'arc',radius:a.R,turn:a.turn,angle:a.angle,_end:a._end},pose);
+          cones.blue.push(...r.cones.blue);
+          cones.yellow.push(...r.cones.yellow);
+          cones.orange.push(...r.cones.orange);
+          pose=r.end;
+        }
+        return {cones,end:pose};
+      }
+      return segChicane(x0, y0, h, seg.radii, seg.turn, seg.angle);
+    case 'start':    return segStart(x0, y0, h);
+  }
+  return { cones:{blue:[],yellow:[],orange:[]}, end:{...startPose} };
+}
+
+/* ============================================================
+   弧段几何：已知起点切线方向 + 末端位置 + 半径 → 圆心/转向/角度
+   ============================================================ */
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= 2*Math.PI;
+  while (d < -Math.PI) d += 2*Math.PI;
+  return d;
+}
+
+// S: 起点 {x,y}, h: 起点切线方向(弧度), E: 末端 {x,y}, R: 半径
+// 返回 { center:{x,y}, turn:+1/-1, angle:度, R } 或 null
+function arcFromEndpoints(S, h, E, R) {
+  const ex = E.x - S.x, ey = E.y - S.y;
+  const c = Math.hypot(ex, ey);
+  if (c < 0.01) return null;
+  R = Math.max(R, c/2 + 0.01);       // 半径不能小于弦的一半
+  const sinHalf = Math.min(1, c / (2*R));
+  const halfAngle = Math.asin(sinHalf);
+  const angle = 2 * halfAngle * 180 / Math.PI;
+  // 弦中点
+  const mx = S.x + ex/2, my = S.y + ey/2;
+  // 弦中垂线方向（单位向量）
+  const chordAng = Math.atan2(ey, ex);
+  const perpX = -Math.sin(chordAng), perpY = Math.cos(chordAng);
+  // 圆心到弦中点距离
+  const d = R * Math.cos(halfAngle);
+  // 两个候选圆心
+  const c1 = { x: mx + d*perpX, y: my + d*perpY };
+  const c2 = { x: mx - d*perpX, y: my - d*perpY };
+  // 选与起点切线方向 h 一致的那个
+  // 起点处半径方向 = S - center，切线 = 半径方向旋转 ±90°
+  const rad1 = Math.atan2(S.y - c1.y, S.x - c1.x);
+  const rad2 = Math.atan2(S.y - c2.y, S.x - c2.x);
+  const tangent1 = rad1 + Math.PI/2;  // turn=+1 时的切线
+  const tangent2 = rad2 + Math.PI/2;
+  const diff1 = Math.abs(angleDiff(tangent1, h));
+  const diff2 = Math.abs(angleDiff(tangent2, h));
+  if (diff1 <= diff2) return { center: c1, turn: 1, angle, R };
+  return { center: c2, turn: -1, angle, R };
+}
+
+// 用「末端贴合」方式生成弧段锥筒（沿圆弧等角布锥）
+function buildArcFromEndpoints(S, h, E, R) {
+  const info = arcFromEndpoints(S, h, E, R);
+  if (!info) return { cones:{blue:[],yellow:[],orange:[]}, end:{...S} };
+  const { center, turn, angle } = info;
+  const cones = { blue:[], yellow:[], orange:[] };
+  const phi0 = Math.atan2(S.y - center.y, S.x - center.x);
+  const A = angle * Math.PI / 180;
+  const n = Math.max(2, Math.round(R*A / STEP));
+  for (let i = 1; i <= n; i++) {
+    const f = i/n;
+    const phi = phi0 + turn*f*A;
+    const nx = center.x + R*Math.cos(phi);
+    const ny = center.y + R*Math.sin(phi);
+    placeRing(cones, nx, ny, h + turn*f*A);
+  }
+  const phi1 = phi0 + turn*A;
+  return { cones, end: {
+    x: center.x + R*Math.cos(phi1),
+    y: center.y + R*Math.sin(phi1),
+    yaw: h + turn*A,
+  }};
+}
+
+// 复合弯：固定转角子弧链（与 _build_autocross.py 一致）
+// 每段弧等角 angleEach，半径依次取自 radii[]（递减 → 螺旋收紧）
+// 总转向 = n * angleEach，自动选择转向（目标在 heading 左侧 → +1）
+// 返回 [{R,turn,angle,_end},...] 或 null
+function buildChicaneSubArcs(S, h, E, radii, angleEach, turn) {
+  if (radii.length === 0) return null;
+  // 自动选择转向
+  const targetAng = Math.atan2(E.y - S.y, E.x - S.x);
+  turn = angleDiff(targetAng, h) >= 0 ? 1 : -1;
+  const result = [];
+  let pose = { x: S.x, y: S.y, yaw: h };
+  for (const R of radii) {
+    const A = angleEach * Math.PI / 180;
+    const cx = pose.x + turn * R * Math.cos(pose.yaw + Math.PI/2);
+    const cy = pose.y + turn * R * Math.sin(pose.yaw + Math.PI/2);
+    const phi0 = Math.atan2(pose.y - cy, pose.x - cx);
+    const phi1 = phi0 + turn * A;
+    const end = { x: cx + R * Math.cos(phi1), y: cy + R * Math.sin(phi1) };
+    result.push({ R, turn, angle: angleEach, _end: end });
+    pose = { x: end.x, y: end.y, yaw: pose.yaw + turn * A };
+  }
+  return result;
+}
+
+/* ============================================================
+   位姿链：从起点顺序推导所有段的几何
+   ============================================================ */
+function rebuildChain() {
+  let pose = { ...state.start };
+  for (const seg of state.segments) {
+    // 每段用自身 _yaw（铺设方向）；若未设则继承前段方向
+    const segStart = { x: pose.x, y: pose.y, yaw: seg._yaw !== undefined ? seg._yaw : pose.yaw };
+    const r = buildSegment(seg, segStart);
+    seg.cones = r.cones;
+    seg.end = r.end;
+    pose = { ...r.end };
+  }
+  validateAll();
+}
+
+/* ============================================================
+   规则校验引擎
+   ============================================================ */
+function isHairpin(seg) {
+  return seg.type === 'hairpin' || (seg.type === 'arc' && seg.angle >= 150);
+}
+function isBigCurve(seg) {
+  return seg.type === 'arc' && seg.angle >= 60 && seg.angle < 150 && seg.radius >= 15;
+}
+
+function validateSegment(seg, idx) {
+  const errors = [];
+  const prev = idx > 0 ? state.segments[idx - 1] : null;
+  const next = idx < state.segments.length - 1 ? state.segments[idx + 1] : null;
+
+  if (seg.type === 'straight') {
+    const betweenHairpins = isHairpin(prev) && isHairpin(next);
+    const betweenBigCurve = isBigCurve(prev) || isBigCurve(next);
+    if (betweenHairpins && seg.length > 60) {
+      errors.push(`直道长度 ${seg.length.toFixed(1)}m > 60m（两端发夹弯间上限）`);
+    } else if (betweenBigCurve && seg.length > 45) {
+      errors.push(`直道长度 ${seg.length.toFixed(1)}m > 45m（一端大弯道上限）`);
+    }
+  }
+  if (seg.type === 'hairpin' && seg.radius < 9) {
+    errors.push(`发夹弯半径 ${seg.radius.toFixed(1)}m < 9m 最小外径`);
+  }
+  if (seg.type === 'arc' && seg.angle >= 150 && seg.radius < 9) {
+    errors.push(`大角度弯道半径 ${seg.radius.toFixed(1)}m < 9m 最小外径`);
+  }
+  if (seg.type === 'slalom') {
+    if (seg.spacing < 7.62) errors.push(`蛇形间距 ${seg.spacing.toFixed(2)}m < 7.62m 下限`);
+    if (seg.spacing > 12.19) errors.push(`蛇形间距 ${seg.spacing.toFixed(2)}m > 12.19m 上限`);
+  }
+  seg.errors = errors;
+  seg.valid = errors.length === 0;
+  return seg.valid;
+}
+
+function validateAll() {
+  let allValid = true;
+  for (let i = 0; i < state.segments.length; i++) {
+    if (!validateSegment(state.segments[i], i)) allValid = false;
+  }
+  return allValid;
+}
+
+function totalLength() {
+  let len = 0;
+  for (const s of state.segments) {
+    if (s.type === 'straight') len += s.length;
+    else if (s.type === 'arc' || s.type === 'hairpin') {
+      const deg = s.type === 'hairpin' ? 180 : s.angle;
+      len += s.radius * deg * Math.PI / 180;
+    } else if (s.type === 'slalom') {
+      len += s.spacing * s.pylons;
+    } else if (s.type === 'chicane') {
+      for (const R of s.radii) len += R * s.angle * Math.PI / 180;
+    }
+  }
+  return len;
+}
+
+function countCones() {
+  let b=0, y=0, o=0;
+  for (const s of state.segments) {
+    b += s.cones.blue.length;
+    y += s.cones.yellow.length;
+    o += s.cones.orange.length;
+  }
+  return { b, y, o };
+}
+
+/* ============================================================
+   默认段参数工厂
+   ============================================================ */
+function defaultSegment(type) {
+  const base = { type, cones:{blue:[],yellow:[],orange:[]}, end:{x:0,y:0,yaw:0}, valid:true, errors:[] };
+  switch (type) {
+    case 'straight': return { ...base, length: 30 };
+    case 'arc':      return { ...base, radius: 20, turn: -1, angle: 90 };
+    case 'hairpin':  return { ...base, radius: 9, turn: 1 };
+    case 'slalom':   return { ...base, pylons: 5, spacing: 10, lateral: 2.5 };
+    case 'chicane':  return { ...base, radii: [18, 12, 8], turn: -1, angle: 35 };
+    case 'start':    return { ...base };
+  }
+  return base;
+}
+
+/* ============================================================
+   坐标变换（世界 <-> 屏幕）
+   ============================================================ */
+function worldToScreen(wx, wy) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (wx - state.cam.x) * state.cam.scale + rect.width / 2,
+    y: -(wy - state.cam.y) * state.cam.scale + rect.height / 2,  // Y 翻转
+  };
+}
+function screenToWorld(sx, sy) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (sx - rect.width/2) / state.cam.scale + state.cam.x,
+    y: -(sy - rect.height/2) / state.cam.scale + state.cam.y,
+  };
+}
+
+/* ============================================================
+   渲染
+   ============================================================ */
+function resizeCanvas() {
+  const rect = canvasWrap.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawGrid() {
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width, h = rect.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // 背景
+  ctx.fillStyle = '#14171c';
+  ctx.fillRect(0, 0, w, h);
+
+  const scale = state.cam.scale;
+  // 网格间距：缩放小时用 5m，大时用 1m
+  let gridStep = 1;
+  if (scale < 3) gridStep = 10;
+  else if (scale < 8) gridStep = 5;
+
+  const tl = screenToWorld(0, 0);
+  const br = screenToWorld(w, h);
+
+  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.beginPath();
+  for (let x = Math.floor(tl.x / gridStep) * gridStep; x <= br.x; x += gridStep) {
+    const s = worldToScreen(x, 0);
+    ctx.moveTo(s.x, 0); ctx.lineTo(s.x, h);
+  }
+  for (let y = Math.floor(br.y / gridStep) * gridStep; y <= tl.y; y += gridStep) {
+    const s = worldToScreen(0, y);
+    ctx.moveTo(0, s.y); ctx.lineTo(w, s.y);
+  }
+  ctx.stroke();
+
+  // 5m 主网格
+  if (gridStep < 5) {
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.beginPath();
+    for (let x = Math.floor(tl.x / 5) * 5; x <= br.x; x += 5) {
+      const s = worldToScreen(x, 0);
+      ctx.moveTo(s.x, 0); ctx.lineTo(s.x, h);
+    }
+    for (let y = Math.floor(br.y / 5) * 5; y <= tl.y; y += 5) {
+      const s = worldToScreen(0, y);
+      ctx.moveTo(0, s.y); ctx.lineTo(w, s.y);
+    }
+    ctx.stroke();
+  }
+
+  // 坐标轴
+  const origin = worldToScreen(0, 0);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,100,100,0.25)';
+  ctx.beginPath(); ctx.moveTo(origin.x, 0); ctx.lineTo(origin.x, h); ctx.stroke();
+  ctx.strokeStyle = 'rgba(100,200,255,0.25)';
+  ctx.beginPath(); ctx.moveTo(0, origin.y); ctx.lineTo(w, origin.y); ctx.stroke();
+}
+
+function drawSegment(seg, idx, isSelected) {
+  const cones = seg.cones;
+  const invalid = !seg.valid;
+  const flash = invalid && Math.floor(performance.now() / 400) % 2 === 0;
+
+  // 中心线
+  const startPose = getSegStart(idx);
+  const sp = worldToScreen(startPose.x, startPose.y);
+  const ep = worldToScreen(seg.end.x, seg.end.y);
+
+  ctx.lineWidth = isSelected ? 3 : 2;
+  if (invalid) {
+    ctx.strokeStyle = flash ? '#ff1744' : '#ef5350';
+  } else if (isSelected) {
+    ctx.strokeStyle = '#4a9eff';
+  } else {
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  }
+
+  // 用锥筒连线画中心线
+  const allPts = [];
+  for (let i = 0; i < cones.blue.length; i++) {
+    allPts.push(cones.blue[i]);
+  }
+  if (allPts.length > 1) {
+    ctx.beginPath();
+    const p0 = worldToScreen(allPts[0][0], allPts[0][1]);
+    ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < allPts.length; i++) {
+      const p = worldToScreen(allPts[i][0], allPts[i][1]);
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+
+  // 锥筒
+  const coneSize = Math.max(2.5, Math.min(6, state.cam.scale * 0.5));
+  for (const c of cones.blue) drawCone(c[0], c[1], '#1E90FF', coneSize);
+  for (const c of cones.yellow) drawCone(c[0], c[1], '#FFD700', coneSize);
+  for (const c of cones.orange) drawCone(c[0], c[1], '#FF8C00', coneSize * 1.2);
+
+  // 选中时画控制点
+  if (isSelected) {
+    drawControlPoints(seg, idx);
+  }
+}
+
+function drawCone(x, y, color, size) {
+  const s = worldToScreen(x, y);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.arc(s.x, s.y, size, 0, Math.PI*2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawControlPoints(seg, idx) {
+  const startPose = getSegStart(idx);
+  const sp = worldToScreen(startPose.x, startPose.y);
+  const ep = worldToScreen(seg.end.x, seg.end.y);
+
+  // 起点
+  ctx.fillStyle = '#4caf50';
+  ctx.beginPath(); ctx.arc(sp.x, sp.y, 6, 0, Math.PI*2); ctx.fill();
+  // 终点
+  ctx.fillStyle = '#ef5350';
+  ctx.beginPath(); ctx.arc(ep.x, ep.y, 6, 0, Math.PI*2); ctx.fill();
+
+  // 弧段中点（半径控制）
+  if (seg.type === 'arc' || seg.type === 'hairpin') {
+    const mid = getArcMidpoint(seg, idx);
+    const mp = worldToScreen(mid.x, mid.y);
+    ctx.fillStyle = '#ff9800';
+    ctx.beginPath(); ctx.arc(mp.x, mp.y, 6, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+function getArcMidpoint(seg, idx) {
+  const startPose = getSegStart(idx);
+  const { x:x0, y:y0, yaw:h } = startPose;
+  const R = seg.radius, turn = seg.turn;
+  const deg = seg.type === 'hairpin' ? 180 : seg.angle;
+  const A = deg * Math.PI / 180 / 2;
+  const cx = x0 + turn*R*Math.cos(h + Math.PI/2);
+  const cy = y0 + turn*R*Math.sin(h + Math.PI/2);
+  const phi0 = Math.atan2(y0 - cy, x0 - cx);
+  const phi = phi0 + turn*A;
+  return { x: cx + R*Math.cos(phi), y: cy + R*Math.sin(phi) };
+}
+
+function getSegStart(idx) {
+  if (idx === 0) return state.start;
+  return state.segments[idx - 1].end;
+}
+
+function drawStart() {
+  const s = worldToScreen(state.start.x, state.start.y);
+  // 闭合吸附区：鼠标靠近起点时显示绿色虚线圆
+  if (!state.closed && state.segments.length >= 2 && state.tool) {
+    const rect = canvas.getBoundingClientRect();
+    const mw = screenToWorld(state.mouse.x, state.mouse.y);
+    const d = Math.hypot(mw.x - state.start.x, mw.y - state.start.y);
+    if (d < 5) {
+      const ringR = 5 * state.cam.scale;
+      ctx.strokeStyle = 'rgba(76,175,80,0.6)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(76,175,80,0.15)';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // 起点星标
+  ctx.fillStyle = state.closed ? '#4caf50' : '#66bb6a';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  const r = 8;
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI/2 + i * Math.PI * 2 / 5;
+    const a2 = a + Math.PI / 5;
+    ctx.lineTo(s.x + r*Math.cos(a), s.y + r*Math.sin(a));
+    ctx.lineTo(s.x + r*0.4*Math.cos(a2), s.y + r*0.4*Math.sin(a2));
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // 已闭合标记
+  if (state.closed) {
+    ctx.fillStyle = '#4caf50';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('已闭合', s.x, s.y - 14);
+  }
+  // 方向箭头
+  const al = 20;
+  const yaw = state.start.yaw;
+  ctx.strokeStyle = '#66bb6a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(s.x, s.y);
+  ctx.lineTo(s.x + al*Math.cos(yaw), s.y - al*Math.sin(yaw));
+  ctx.stroke();
+}
+
+function drawPreview() {
+  if (state.draggingPoint) return;
+  if (!state.tool || state.tool === 'start') return;
+
+  const fromPose = state.segments.length > 0
+    ? state.segments[state.segments.length-1].end : state.start;
+
+  const rect = canvas.getBoundingClientRect();
+  const mx = state.mouse.x, my = state.mouse.y;
+  if (mx < 0 || my < 0 || mx > rect.width || my > rect.height) return;
+  const mw = screenToWorld(mx, my);
+
+  const seg = segmentFromMouse(state.tool, mw, fromPose);
+  let r;
+  if (state.tool === 'arc' || state.tool === 'hairpin') {
+    r = buildArcFromEndpoints({x:fromPose.x,y:fromPose.y}, seg._yaw, mw, seg.radius);
+  } else if (state.tool === 'chicane' && seg._subArcs) {
+    // 逐段拼锥筒
+    r = { cones:{blue:[],yellow:[],orange:[]}, end:{...fromPose} };
+    let pose = { x: fromPose.x, y: fromPose.y, yaw: seg._yaw };
+    for (const a of seg._subArcs) {
+      const sub = buildSegment({type:'arc',radius:a.R,turn:a.turn,angle:a.angle,_end:a._end}, pose);
+      r.cones.blue.push(...sub.cones.blue);
+      r.cones.yellow.push(...sub.cones.yellow);
+      r.cones.orange.push(...sub.cones.orange);
+      pose = sub.end;
+    }
+    r.end = pose;
+  } else {
+    const previewStart = { x: fromPose.x, y: fromPose.y, yaw: seg._yaw };
+    r = buildSegment(seg, previewStart);
+  }
+
+  ctx.globalAlpha = 0.5;
+  const cones = r.cones;
+  const coneSize = Math.max(2.5, Math.min(6, state.cam.scale * 0.5));
+  for (const c of cones.blue) drawCone(c[0], c[1], '#1E90FF', coneSize);
+  for (const c of cones.yellow) drawCone(c[0], c[1], '#FFD700', coneSize);
+  for (const c of cones.orange) drawCone(c[0], c[1], '#FF8C00', coneSize);
+  ctx.globalAlpha = 1;
+
+  // 预览终点 = 鼠标位置（弧段）或计算终点
+  const ep = worldToScreen(r.end.x, r.end.y);
+  ctx.strokeStyle = 'rgba(74,158,255,0.6)';
+  ctx.setLineDash([4, 4]);
+  ctx.lineWidth = 1.5;
+  const sp = worldToScreen(fromPose.x, fromPose.y);
+  ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(ep.x, ep.y); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function render() {
+  drawGrid();
+  drawStart();
+  for (let i = 0; i < state.segments.length; i++) {
+    drawSegment(state.segments[i], i, i === state.selected);
+  }
+  drawPreview();
+  requestAnimationFrame(render);
+}
+
+/* ============================================================
+   属性面板
+   ============================================================ */
+function renderPanel() {
+  if (state.selected < 0 || state.selected >= state.segments.length) {
+    panelContent.innerHTML = `<div class="panel-empty">
+      在画布上<strong>点击</strong>铺设第一段赛道，<br>
+      或点击已铺设段进行编辑。<br><br>
+      按 <kbd style="background:var(--bg-panel-2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:11px;">H</kbd> 查看快捷键
+    </div>`;
+    return;
+  }
+  const seg = state.segments[state.selected];
+  const badgeClass = seg.type;
+  let html = `<div class="panel-section">
+    <div class="panel-section-title">选中段 #${state.selected + 1}</div>
+    <div style="margin-bottom:12px"><span class="seg-type-badge ${badgeClass}">${SEG_ICONS[seg.type]} ${SEG_LABELS[seg.type]}</span></div>
+  </div>`;
+
+  // 参数表单
+  html += `<div class="panel-section"><div class="panel-section-title">参数</div>`;
+  html += fieldHTML('长度 (m)', 'length', seg.length, 1, 200, 0.5, seg.type === 'straight');
+  html += fieldHTML('半径 (m)', 'radius', seg.radius, 3, 100, 0.5, seg.type === 'arc' || seg.type === 'hairpin');
+  html += fieldHTML('角度 (°)', 'angle', seg.angle, 5, 270, 5, seg.type === 'arc' || seg.type === 'chicane');
+  html += fieldHTML('方向', 'turn', seg.turn, -1, 1, 2, seg.type === 'arc' || seg.type === 'hairpin' || seg.type === 'chicane', 'turn');
+  html += fieldHTML('桩数', 'pylons', seg.pylons, 2, 20, 1, seg.type === 'slalom');
+  html += fieldHTML('间距 (m)', 'spacing', seg.spacing, 3, 20, 0.1, seg.type === 'slalom');
+  html += fieldHTML('横向偏移 (m)', 'lateral', seg.lateral, 1, 6, 0.1, seg.type === 'slalom');
+  if (seg.type === 'chicane') {
+    html += `<div class="field"><label>半径序列</label>
+      <input type="text" id="f-radii" value="${seg.radii.join(', ')}" placeholder="如: 18, 12, 8"
+        onchange="updateField('radii', this.value.split(',').map(s=>parseFloat(s.trim())).filter(v=>!isNaN(v)))">
+    </div>`;
+  }
+  html += `</div>`;
+
+  // 校验结果
+  html += `<div class="panel-section"><div class="panel-section-title">规则校验</div>`;
+  if (seg.valid) {
+    html += `<div class="validate-result ok">✓ 符合赛规</div>`;
+  } else {
+    html += `<div class="validate-result err">⚠ ${seg.errors.join('<br>⚠ ')}</div>`;
+  }
+  html += `</div>`;
+
+  // 删除
+  html += `<div class="panel-section"><button class="btn-danger" onclick="deleteSelected()">🗑 删除本段</button></div>`;
+
+  panelContent.innerHTML = html;
+}
+
+function fieldHTML(label, key, val, min, max, step, show, special) {
+  if (!show) return '';
+  const display = special === 'turn' ? (val === 1 ? '左 (+1)' : '右 (-1)') : val;
+  const input = special === 'turn'
+    ? `<select onchange="updateField('turn', parseInt(this.value))" style="width:100%;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-bright);padding:5px 8px;border-radius:4px;font-size:12.5px">
+        <option value="1" ${val===1?'selected':''}>左 (+1)</option>
+        <option value="-1" ${val===-1?'selected':''}>右 (-1)</option>
+       </select>`
+    : `<input type="number" value="${val}" min="${min}" max="${max}" step="${step}"
+        onchange="updateField('${key}', parseFloat(this.value))">`;
+  return `<div class="field"><label>${label} <span class="val">${display}</span></label>${input}</div>`;
+}
+
+function updateField(key, val) {
+  if (state.selected < 0) return;
+  const seg = state.segments[state.selected];
+  seg[key] = val;
+  pushUndo();
+  rebuildChain();
+  renderPanel();
+  updateStatus();
+}
+
+function deleteSelected() {
+  if (state.selected < 0) return;
+  pushUndo();
+  state.segments.splice(state.selected, 1);
+  state.selected = -1;
+  rebuildChain();
+  renderPanel();
+  updateStatus();
+}
+
+/* ============================================================
+   状态栏
+   ============================================================ */
+function updateStatus() {
+  const cones = countCones();
+  domStat.seg.textContent = state.segments.length;
+  domStat.len.textContent = totalLength().toFixed(1);
+  domStat.blue.textContent = cones.b;
+  domStat.yellow.textContent = cones.y;
+  domStat.orange.textContent = cones.o;
+
+  // 校验信息
+  const invalidSegs = state.segments.filter(s => !s.valid);
+  if (invalidSegs.length > 0) {
+    const first = invalidSegs[0];
+    statusMsg.className = 'status-msg err';
+    statusMsg.innerHTML = `⚠ ${first.errors[0]}`;
+  } else if (state.segments.length === 0) {
+    statusMsg.className = 'status-msg ok';
+    statusMsg.textContent = '就绪 — 点击画布开始铺设';
+  } else if (state.closed) {
+    statusMsg.className = 'status-msg ok';
+    statusMsg.textContent = `✓ 赛道已闭合（${state.segments.length} 段）— 总长 ${totalLength().toFixed(1)}m`;
+  } else if (!state.tool) {
+    statusMsg.className = 'status-msg warn';
+    statusMsg.textContent = `已放置 ${state.segments.length} 段 — 按 1-5 选择下一段类型`;
+  } else {
+    statusMsg.className = 'status-msg ok';
+    statusMsg.textContent = `✓ 全部 ${state.segments.length} 段符合赛规 — 总长 ${totalLength().toFixed(1)}m`;
+  }
+}
+
+/* ============================================================
+   撤销栈
+   ============================================================ */
+function pushUndo() {
+  const snap = JSON.stringify({ start: state.start, segments: state.segments });
+  state.undoStack.push(snap);
+  if (state.undoStack.length > UNDO_MAX) state.undoStack.shift();
+}
+function undo() {
+  if (state.undoStack.length === 0) return;
+  const snap = JSON.parse(state.undoStack.pop());
+  state.start = snap.start;
+  state.segments = snap.segments;
+  state.selected = -1;
+  rebuildChain();
+  renderPanel();
+  updateStatus();
+}
+
+/* ============================================================
+   导出 YAML
+   ============================================================ */
+function exportYAML() {
+  const allCones = { blue:[], yellow:[], orange:[] };
+  for (const s of state.segments) {
+    for (const c of s.cones.blue) allCones.blue.push(c);
+    for (const c of s.cones.yellow) allCones.yellow.push(c);
+    for (const c of s.cones.orange) allCones.orange.push(c);
+  }
+
+  const fmt = (p) => `[${p[0].toFixed(3)}, ${p[1].toFixed(3)}, 0.0]`;
+  const lines = [];
+  lines.push('# ============================================================');
+  lines.push(`# WUTA-FSD Track — ${state.trackType}`);
+  lines.push('# Rules: straight<=60/45m; hairpin min R9m;');
+  lines.push('#        slalom spacing 7.62-12.19m; track width 3.5m');
+  lines.push('# Blue=left boundary, Yellow=right, Orange=start/finish');
+  lines.push('# Generated by WUTA-FSD Track Builder');
+  lines.push('# ============================================================');
+  lines.push('track:');
+  lines.push(`  type: ${state.trackType}`);
+  lines.push('  start_pose:');
+  lines.push(`    x: ${state.start.x.toFixed(1)}`);
+  lines.push(`    y: ${state.start.y.toFixed(1)}`);
+  lines.push(`    yaw: ${state.start.yaw.toFixed(4)}`);
+  lines.push('');
+  lines.push('  blue_cones:');
+  for (const c of allCones.blue) lines.push(`    - ${fmt(c)}`);
+  lines.push('');
+  lines.push('  yellow_cones:');
+  for (const c of allCones.yellow) lines.push(`    - ${fmt(c)}`);
+  lines.push('');
+  lines.push('  orange_cones:');
+  for (const c of allCones.orange) lines.push(`    - ${fmt(c)}`);
+
+  const yaml = lines.join('\n') + '\n';
+  const blob = new Blob([yaml], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `track_${state.trackType}_${Date.now()}.yaml`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+   预览（复用渲染逻辑）
+   ============================================================ */
+function showPreview() {
+  const overlay = document.getElementById('preview-overlay');
+  overlay.classList.add('show');
+  // 延迟一帧让 canvas 尺寸就绪
+  requestAnimationFrame(() => drawPreviewCanvas());
+}
+
+function drawPreviewCanvas() {
+  const pc = previewCanvas;
+  const rect = pc.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  pc.width = rect.width * dpr; pc.height = rect.height * dpr;
+  previewCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = rect.width, h = rect.height;
+  previewCtx.fillStyle = '#14171c';
+  previewCtx.fillRect(0, 0, w, h);
+
+  // 计算包围盒
+  let pts = [[state.start.x, state.start.y]];
+  for (const s of state.segments) {
+    for (const c of s.cones.blue) pts.push(c);
+    for (const c of s.cones.yellow) pts.push(c);
+    for (const c of s.cones.orange) pts.push(c);
+  }
+  if (pts.length < 2) return;
+  const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const cx = (xMin+xMax)/2, cy = (yMin+yMax)/2;
+  const span = Math.max(xMax-xMin, yMax-yMin) * 1.1;
+  const scale = Math.min(w, h) / Math.max(span, 1);
+
+  const toScreen = (wx, wy) => ({
+    x: (wx - cx) * scale + w/2,
+    y: -(wy - cy) * scale + h/2,
+  });
+
+  // 网格
+  previewCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+  previewCtx.lineWidth = 0.5;
+  previewCtx.beginPath();
+  for (let x = Math.floor(xMin/5)*5; x <= xMax; x += 5) {
+    const s = toScreen(x, 0); previewCtx.moveTo(s.x, 0); previewCtx.lineTo(s.x, h);
+  }
+  for (let y = Math.floor(yMin/5)*5; y <= yMax; y += 5) {
+    const s = toScreen(0, y); previewCtx.moveTo(0, s.y); previewCtx.lineTo(w, s.y);
+  }
+  previewCtx.stroke();
+
+  // 锥筒
+  const coneSize = Math.max(2, Math.min(5, scale * 0.4));
+  for (const s of state.segments) {
+    for (const c of s.cones.blue) { const p = toScreen(c[0],c[1]); previewCtx.fillStyle='#1E90FF'; previewCtx.beginPath(); previewCtx.arc(p.x,p.y,coneSize,0,Math.PI*2); previewCtx.fill(); }
+    for (const c of s.cones.yellow) { const p = toScreen(c[0],c[1]); previewCtx.fillStyle='#FFD700'; previewCtx.beginPath(); previewCtx.arc(p.x,p.y,coneSize,0,Math.PI*2); previewCtx.fill(); }
+    for (const c of s.cones.orange) { const p = toScreen(c[0],c[1]); previewCtx.fillStyle='#FF8C00'; previewCtx.beginPath(); previewCtx.arc(p.x,p.y,coneSize*1.2,0,Math.PI*2); previewCtx.fill(); }
+  }
+  // 起点
+  const sp = toScreen(state.start.x, state.start.y);
+  previewCtx.fillStyle = '#66bb6a';
+  previewCtx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI/2 + i*Math.PI*2/5;
+    const a2 = a + Math.PI/5;
+    previewCtx.lineTo(sp.x+10*Math.cos(a), sp.y+10*Math.sin(a));
+    previewCtx.lineTo(sp.x+4*Math.cos(a2), sp.y+4*Math.sin(a2));
+  }
+  previewCtx.closePath(); previewCtx.fill();
+
+  const cones = countCones();
+  document.getElementById('preview-info').textContent =
+    `蓝 ${cones.b} · 黄 ${cones.y} · 橙 ${cones.o} · 总长 ${totalLength().toFixed(1)}m · 可用 visualize_track.py 打开导出的 YAML`;
+}
+
+/* ============================================================
+   事件处理
+   ============================================================ */
+function canvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function onMouseDown(e) {
+  const pos = canvasPos(e);
+  state.mouse = { x: pos.x, y: pos.y, down: true, button: e.button };
+
+  if (e.button === 1 || e.button === 2) {
+    // 中键/右键 → 平移
+    state.panning = true;
+    state.panStart = { x: e.clientX, y: e.clientY, camx: state.cam.x, camy: state.cam.y };
+    canvas.classList.add('panning');
+    e.preventDefault();
+    return;
+  }
+
+  if (e.button === 0) {
+    const w = screenToWorld(pos.x, pos.y);
+
+    // 检查是否点击了控制点
+    if (state.selected >= 0) {
+      const seg = state.segments[state.selected];
+      const startPose = getSegStart(state.selected);
+      const sp = worldToScreen(startPose.x, startPose.y);
+      const ep = worldToScreen(seg.end.x, seg.end.y);
+      const distEnd = Math.hypot(pos.x - ep.x, pos.y - ep.y);
+      if (distEnd < 10) {
+        state.draggingPoint = { seg_idx: state.selected, key: 'end' };
+        return;
+      }
+      if (seg.type === 'arc' || seg.type === 'hairpin') {
+        const mid = getArcMidpoint(seg, state.selected);
+        const mp = worldToScreen(mid.x, mid.y);
+        const distMid = Math.hypot(pos.x - mp.x, pos.y - mp.y);
+        if (distMid < 10) {
+          state.draggingPoint = { seg_idx: state.selected, key: 'radius' };
+          return;
+        }
+      }
+    }
+
+    // 检查是否点击了已有段（选中）
+    let clicked = -1;
+    for (let i = state.segments.length - 1; i >= 0; i--) {
+      const seg = state.segments[i];
+      const startPose = getSegStart(i);
+      const ep = worldToScreen(seg.end.x, seg.end.y);
+      const sp = worldToScreen(startPose.x, startPose.y);
+      // 点到线段距离
+      const d = pointToSegDist(pos.x, pos.y, sp.x, sp.y, ep.x, ep.y);
+      if (d < 8) { clicked = i; break; }
+    }
+    if (clicked >= 0) {
+      state.selected = clicked;
+      renderPanel();
+      updateStatus();
+      return;
+    }
+
+    // 已闭合时不可铺设新段
+    if (state.closed) {
+      statusMsg.className = 'status-msg warn';
+      statusMsg.textContent = '赛道已闭合 — 点击「闭合赛道」取消闭合后可继续编辑';
+      return;
+    }
+    // 否则铺设新段
+    if (state.tool === 'start') {
+      // 移动起点
+      pushUndo();
+      state.start.x = w.x;
+      state.start.y = w.y;
+      rebuildChain();
+      updateStatus();
+      return;
+    }
+    pushUndo();
+    const seg = segmentFromMouse(state.tool, w, fromPoseAt());
+    // 记忆弧段半径供下次使用
+    if (seg.type === 'arc' || seg.type === 'hairpin') state.arcRadius = seg.radius;
+    state.segments.push(seg);
+    rebuildChain();
+    // 自动闭合：末端距起点 < 5m 且已有 ≥2 段 → 吸附到起点
+    if (state.segments.length >= 2) {
+      const lastSeg = state.segments[state.segments.length - 1];
+      const d = Math.hypot(lastSeg.end.x - state.start.x, lastSeg.end.y - state.start.y);
+      if (d < 5) {
+        state.closed = true;
+        // 同时更新 _end 和参数，确保 rebuildChain 后终点=起点
+        lastSeg.end = { x: state.start.x, y: state.start.y, yaw: lastSeg.end.yaw };
+        if (lastSeg._end) lastSeg._end = { x: state.start.x, y: state.start.y };
+        if (lastSeg._subArcs) {
+          lastSeg._subArcs[lastSeg._subArcs.length - 1]._end = { x: state.start.x, y: state.start.y };
+        }
+        rebuildChain();
+      }
+    }
+    // 铺完自动取消选择 + 清空工具 → 等待用户选下一段类型
+    state.selected = -1;
+    state.tool = null;
+    document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.remove('active'));
+    renderPanel();
+    updateStatus();
+  }
+}
+
+// 根据鼠标世界坐标 + 锚点位姿，动态生成段参数（与预览一致）
+function segmentFromMouse(tool, mw, fromPose) {
+  const seg = defaultSegment(tool);
+  const dx = mw.x - fromPose.x, dy = mw.y - fromPose.y;
+  const dist = Math.hypot(dx, dy);
+  const ang = Math.atan2(dy, dx);
+  const snapAng = state.snap ? Math.round(ang / (SNAP_DEG*Math.PI/180)) * (SNAP_DEG*Math.PI/180) : ang;
+  seg._yaw = snapAng;  // 铺设方向（起点切线方向）
+  if (tool === 'straight') {
+    seg.length = Math.max(1, dist);
+  } else if (tool === 'arc') {
+    const info = arcFromEndpoints({x:fromPose.x,y:fromPose.y}, snapAng, mw, state.arcRadius);
+    if (info) { seg.radius = info.R; seg.turn = info.turn; seg.angle = info.angle; seg._end = {x:mw.x,y:mw.y}; }
+  } else if (tool === 'hairpin') {
+    const info = arcFromEndpoints({x:fromPose.x,y:fromPose.y}, snapAng, mw, Math.max(state.arcRadius, dist/2));
+    if (info) { seg.radius = info.R; seg.turn = info.turn; seg._end = {x:mw.x,y:mw.y}; }
+  } else if (tool === 'slalom') {
+    seg.pylons = Math.max(2, Math.round(dist / seg.spacing));
+  } else if (tool === 'chicane') {
+    // 固定转角子弧链，自动选转向
+    const sub = buildChicaneSubArcs({x:fromPose.x,y:fromPose.y}, snapAng, mw, seg.radii, seg.angle, seg.turn);
+    if (sub) { seg._subArcs = sub; seg._end = sub[sub.length-1]._end; }
+  }
+  return seg;
+}
+
+// 当前铺设锚点位姿（最后一段的末端，或起点）
+function fromPoseAt() {
+  if (state.selected >= 0) return state.segments[state.selected].end;
+  return state.segments.length > 0 ? state.segments[state.segments.length-1].end : state.start;
+}
+
+function pointToSegDist(px, py, x1, y1, x2, y2) {
+  const dx = x2-x1, dy = y2-y1;
+  const len2 = dx*dx + dy*dy;
+  if (len2 === 0) return Math.hypot(px-x1, py-y1);
+  let t = ((px-x1)*dx + (py-y1)*dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1+t*dx), py - (y1+t*dy));
+}
+
+function onMouseMove(e) {
+  const pos = canvasPos(e);
+  state.mouse = { ...state.mouse, x: pos.x, y: pos.y };
+
+  if (state.panning && state.panStart) {
+    const dx = e.clientX - state.panStart.x;
+    const dy = e.clientY - state.panStart.y;
+    state.cam.x = state.panStart.camx - dx / state.cam.scale;
+    state.cam.y = state.panStart.camy + dy / state.cam.scale;
+    return;
+  }
+
+  if (state.draggingPoint) {
+    const w = screenToWorld(pos.x, pos.y);
+    const seg = state.segments[state.draggingPoint.seg_idx];
+    const startPose = getSegStart(state.draggingPoint.seg_idx);
+    if (state.draggingPoint.key === 'end') {
+      const dx = w.x - startPose.x, dy = w.y - startPose.y;
+      const dist = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+      if (seg.type === 'straight') {
+        seg.length = Math.max(1, dist);
+      } else if (seg.type === 'arc' || seg.type === 'hairpin') {
+        seg.angle = Math.max(5, Math.min(270, dist / seg.radius * 180 / Math.PI));
+        seg.turn = ang >= 0 ? 1 : -1;
+      }
+    } else if (state.draggingPoint.key === 'radius') {
+      const mid = getArcMidpoint(seg, state.draggingPoint.seg_idx);
+      const newR = Math.hypot(w.x - startPose.x, w.y - startPose.y);
+      seg.radius = Math.max(3, Math.min(100, newR));
+    }
+    pushUndo();
+    rebuildChain();
+    renderPanel();
+    updateStatus();
+    return;
+  }
+
+  // 更新提示
+  updateHint(pos);
+}
+
+function updateHint(pos) {
+  if (!state.tool && state.segments.length > 0) {
+    canvasHint.textContent = `已放置 ${state.segments.length} 段 — 按 1-5 选择下一段类型`;
+    return;
+  }
+  if (state.tool === 'start') {
+    const w = screenToWorld(pos.x, pos.y);
+    canvasHint.textContent = `起点 · (${w.x.toFixed(1)}, ${w.y.toFixed(1)}) · 点击移动起点`;
+    return;
+  }
+  const w = screenToWorld(pos.x, pos.y);
+  const fromPose = fromPoseAt();
+  const seg = segmentFromMouse(state.tool, w, fromPose);
+  const toolLabel = SEG_LABELS[state.tool] || state.tool;
+  let param = '';
+  if (state.tool === 'straight') param = `长度 ${seg.length.toFixed(1)}m`;
+  else if (state.tool === 'arc') param = `半径 ${seg.radius.toFixed(1)}m · 角度 ${seg.angle.toFixed(0)}° · 滚轮调半径`;
+  else if (state.tool === 'hairpin') param = `半径 ${seg.radius.toFixed(1)}m · 180° · 滚轮调半径`;
+  else if (state.tool === 'slalom') param = `${seg.pylons} 桩 · 间距 ${seg.spacing.toFixed(1)}m`;
+  else if (state.tool === 'chicane') param = `角度 ${seg.angle.toFixed(0)}°`;
+  canvasHint.textContent = `${toolLabel} · ${param} · (${w.x.toFixed(1)}, ${w.y.toFixed(1)}) · 点击铺设`;
+}
+
+function onMouseUp(e) {
+  if (state.panning) {
+    state.panning = false;
+    state.panStart = null;
+    canvas.classList.remove('panning');
+  }
+  if (state.draggingPoint) {
+    state.draggingPoint = null;
+  }
+  state.mouse.down = false;
+}
+
+function onWheel(e) {
+  e.preventDefault();
+  // 铺设弧段时：滚轮调半径
+  if (state.tool === 'arc' || state.tool === 'hairpin') {
+    state.arcRadius = Math.max(3, Math.min(100, state.arcRadius + (e.deltaY < 0 ? 1 : -1)));
+    return;
+  }
+  // 否则：画布缩放
+  const pos = canvasPos(e);
+  const w = screenToWorld(pos.x, pos.y);
+  const factor = e.deltaY < 0 ? 1.12 : 1/1.12;
+  const newScale = Math.max(0.5, Math.min(80, state.cam.scale * factor));
+  state.cam.scale = newScale;
+  const w2 = screenToWorld(pos.x, pos.y);
+  state.cam.x += w.x - w2.x;
+  state.cam.y += w.y - w2.y;
+}
+
+function onDblClick() {
+  fitView();
+}
+
+// 闭合赛道：将最后一段末端吸附到起点
+function closeTrack() {
+  if (state.segments.length < 2) {
+    alert('至少需要 2 段赛道才能闭合');
+    return;
+  }
+  if (state.closed) {
+    // 已闭合 → 取消闭合
+    state.closed = false;
+    rebuildChain();
+    updateStatus();
+    return;
+  }
+  pushUndo();
+  state.closed = true;
+  const last = state.segments[state.segments.length - 1];
+  last.end = { x: state.start.x, y: state.start.y, yaw: last.end.yaw };
+  if (last._end) last._end = { x: state.start.x, y: state.start.y };
+  if (last._subArcs) last._subArcs[last._subArcs.length - 1]._end = { x: state.start.x, y: state.start.y };
+  rebuildChain();
+  renderPanel();
+  updateStatus();
+}
+
+function fitView() {
+  let pts = [[state.start.x, state.start.y]];
+  for (const s of state.segments) {
+    for (const c of s.cones.blue) pts.push(c);
+    for (const c of s.cones.yellow) pts.push(c);
+    for (const c of s.cones.orange) pts.push(c);
+  }
+  if (pts.length < 2) return;
+  const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  state.cam.x = (xMin+xMax)/2;
+  state.cam.y = (yMin+yMax)/2;
+  const rect = canvas.getBoundingClientRect();
+  const span = Math.max(xMax-xMin, yMax-yMin) * 1.15;
+  state.cam.scale = Math.min(rect.width, rect.height) / Math.max(span, 1);
+}
+
+function onKeyDown(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+  if (e.key === '1') setTool('straight');
+  else if (e.key === '2') setTool('arc');
+  else if (e.key === '3') setTool('hairpin');
+  else if (e.key === '4') setTool('slalom');
+  else if (e.key === '5') setTool('chicane');
+  else if (e.key === 'r' || e.key === 'R') rotateDirection();
+  else if (e.key === 'q' || e.key === 'Q') adjustRadius(-1);
+  else if (e.key === 'e' || e.key === 'E') adjustRadius(1);
+  else if (e.key === 'z' && e.ctrlKey) { e.preventDefault(); undo(); }
+  else if (e.key === 'Escape') { undo(); }
+  else if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); }
+  else if (e.key === 's' && e.ctrlKey) { e.preventDefault(); exportYAML(); }
+  else if (e.key === 'p' && e.ctrlKey) { e.preventDefault(); showPreview(); }
+  else if (e.key === 'g' || e.key === 'G') { state.snap = !state.snap; updateSnapHint(); }
+  else if (e.key === 'f' || e.key === 'F') { fitView(); }
+  else if (e.key === 'h' || e.key === 'H') { toggleHelp(); }
+}
+
+function setTool(tool) {
+  state.tool = tool;
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(b => {
+    b.classList.toggle('active', b.dataset.tool === tool);
+  });
+}
+
+function rotateDirection() {
+  if (state.selected >= 0) {
+    const seg = state.segments[state.selected];
+    if (seg.type === 'arc' || seg.type === 'hairpin' || seg.type === 'chicane') {
+      seg.turn *= -1;
+      pushUndo(); rebuildChain(); renderPanel(); updateStatus();
+      return;
+    }
+  }
+  // 旋转起点方向
+  state.start.yaw += Math.PI/2;
+  rebuildChain(); updateStatus();
+}
+
+function adjustRadius(d) {
+  if (state.selected >= 0) {
+    const seg = state.segments[state.selected];
+    if (seg.type === 'arc' || seg.type === 'hairpin') {
+      seg.radius = Math.max(3, seg.radius + d);
+      pushUndo(); rebuildChain(); renderPanel(); updateStatus();
+    }
+  }
+}
+
+function updateSnapHint() {
+  // 吸附状态已在 snap 变量中，可加视觉提示
+}
+
+function toggleHelp() {
+  const o = document.getElementById('help-overlay');
+  o.classList.toggle('show');
+}
+
+/* ============================================================
+   初始化
+   ============================================================ */
+function init() {
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // 画布事件
+  canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseup', onMouseUp);
+  canvas.addEventListener('mouseleave', onMouseUp);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('dblclick', onDblClick);
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  // 键盘
+  window.addEventListener('keydown', onKeyDown);
+
+  // 工具栏按钮
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+    btn.addEventListener('click', () => setTool(btn.dataset.tool));
+  });
+  document.querySelectorAll('.tool-btn[data-tracktype]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.trackType = btn.dataset.tracktype;
+      document.querySelectorAll('.tool-btn[data-tracktype]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+  document.getElementById('btn-undo').addEventListener('click', undo);
+  document.getElementById('btn-close').addEventListener('click', closeTrack);
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    if (state.segments.length === 0) return;
+    if (confirm('清空所有赛道段？')) {
+      pushUndo();
+      state.segments = [];
+      state.selected = -1;
+      state.closed = false;
+      rebuildChain(); renderPanel(); updateStatus();
+    }
+  });
+  document.getElementById('btn-fit').addEventListener('click', fitView);
+  document.getElementById('btn-save').addEventListener('click', exportYAML);
+  document.getElementById('btn-preview').addEventListener('click', showPreview);
+  document.getElementById('btn-help').addEventListener('click', toggleHelp);
+
+  // 帮助/预览弹窗关闭
+  document.getElementById('help-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+  document.getElementById('preview-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+
+  // 初始起点
+  rebuildChain();
+  updateStatus();
+  renderPanel();
+  requestAnimationFrame(render);
+
+  // 调试用：暴露状态到 window
+  window.__state = state;
+  window.__worldToScreen = worldToScreen;
+  window.__screenToWorld = screenToWorld;
+  window.__debug = {
+    getSegInfo: () => state.segments.map((s, i) => ({
+      i, type: s.type, end: s.end,
+      _end: s._end,
+      _subArcs: s._subArcs ? s._subArcs.map(a => ({R:a.R, turn:a.turn, angle:a.angle.toFixed(1)})) : null
+    })),
+    getCloseDist: () => {
+      if (state.segments.length === 0) return null;
+      const last = state.segments[state.segments.length-1].end;
+      return Math.hypot(last.x - state.start.x, last.y - state.start.y);
+    }
+  };
+}
+
+init();
+</script>
+</body>
+</html>
