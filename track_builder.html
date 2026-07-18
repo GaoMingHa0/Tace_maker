@@ -596,15 +596,37 @@ function segStart(x, y, h) {
   return { cones, end: { x, y, yaw: h } };
 }
 
+// ===== 用存储的圆心直接重建弧（保证 预览=放置 完全一致）=====
+function buildArcFromStoredCenter(center, R, Sx, Sy, h, sweep) {
+  const phi0 = Math.atan2(Sy - center.y, Sx - center.x);
+  const n = Math.max(2, Math.round(R * Math.abs(sweep) / STEP));
+  const cones = { blue:[], yellow:[], orange:[] };
+  for (let i = 1; i <= n; i++) {
+    const f = i / n;
+    const phi = phi0 + sweep * f;
+    const nx = center.x + R * Math.cos(phi);
+    const ny = center.y + R * Math.sin(phi);
+    placeRing(cones, nx, ny, h + sweep * f);
+  }
+  const phi1 = phi0 + sweep;
+  return { cones, end: {
+    x: center.x + R * Math.cos(phi1),
+    y: center.y + R * Math.sin(phi1),
+    yaw: h + sweep,
+  }};
+}
+
 // 根据段参数生成几何（返回 cones + end 位姿）
 function buildSegment(seg, startPose) {
   const { x:x0, y:y0, yaw:h } = startPose;
   switch (seg.type) {
     case 'straight': return segStraight(x0, y0, h, seg.length);
     case 'arc':
+      if (seg._center) return buildArcFromStoredCenter(seg._center, seg.radius, x0, y0, h, seg._sweep);
       if (seg._end) return buildArcFromEndpoints({x:x0,y:y0}, h, seg._end, seg.radius);
       return segArc(x0, y0, h, seg.radius, seg.turn, seg.angle);
     case 'hairpin':
+      if (seg._center) return buildArcFromStoredCenter(seg._center, seg.radius, x0, y0, h, seg._sweep);
       if (seg._end) return buildArcFromEndpoints({x:x0,y:y0}, h, seg._end, seg.radius);
       return segArc(x0, y0, h, seg.radius, seg.turn, 180);
     case 'slalom':   return segSlalom(x0, y0, h, seg.pylons, seg.spacing, seg.lateral);
@@ -613,11 +635,13 @@ function buildSegment(seg, startPose) {
         const cones={blue:[],yellow:[],orange:[]};
         let pose={x:x0,y:y0,yaw:h};
         for (const a of seg._subArcs) {
-          const r=buildSegment({type:'arc',radius:a.R,turn:a.turn,angle:a.angle,_end:a._end},pose);
+          const r = a._center
+            ? buildArcFromStoredCenter(a._center, a.R, pose.x, pose.y, pose.yaw, a._sweep)
+            : buildSegment({type:'arc',radius:a.R,turn:a.turn,angle:a.angle,_end:a._end}, pose);
           cones.blue.push(...r.cones.blue);
           cones.yellow.push(...r.cones.yellow);
           cones.orange.push(...r.cones.orange);
-          pose=r.end;
+          pose = r.end;
         }
         return {cones,end:pose};
       }
@@ -695,13 +719,11 @@ function buildArcFromEndpoints(S, h, E, R) {
 
 // 复合弯：固定转角子弧链（与 _build_autocross.py 一致）
 // 每段弧等角 angleEach，半径依次取自 radii[]（递减 → 螺旋收紧）
-// 总转向 = n * angleEach，自动选择转向（目标在 heading 左侧 → +1）
-// 返回 [{R,turn,angle,_end},...] 或 null
+// turn 由调用方固定传入（不随鼠标移动翻转）
+// 返回 [{R,turn,angle,_end,_center,_sweep},...] 或 null
 function buildChicaneSubArcs(S, h, E, radii, angleEach, turn) {
   if (radii.length === 0) return null;
-  // 自动选择转向
-  const targetAng = Math.atan2(E.y - S.y, E.x - S.x);
-  turn = angleDiff(targetAng, h) >= 0 ? 1 : -1;
+  // 转向由调用方确定，不在此处翻转
   const result = [];
   let pose = { x: S.x, y: S.y, yaw: h };
   for (const R of radii) {
@@ -711,7 +733,7 @@ function buildChicaneSubArcs(S, h, E, radii, angleEach, turn) {
     const phi0 = Math.atan2(pose.y - cy, pose.x - cx);
     const phi1 = phi0 + turn * A;
     const end = { x: cx + R * Math.cos(phi1), y: cy + R * Math.sin(phi1) };
-    result.push({ R, turn, angle: angleEach, _end: end });
+    result.push({ R, turn, angle: angleEach, _end: end, _center: {x:cx,y:cy}, _sweep: turn * A });
     pose = { x: end.x, y: end.y, yaw: pose.yaw + turn * A };
   }
   return result;
@@ -737,9 +759,11 @@ function rebuildChain() {
    规则校验引擎
    ============================================================ */
 function isHairpin(seg) {
+  if (!seg) return false;
   return seg.type === 'hairpin' || (seg.type === 'arc' && seg.angle >= 150);
 }
 function isBigCurve(seg) {
+  if (!seg) return false;
   return seg.type === 'arc' && seg.angle >= 60 && seg.angle < 150 && seg.radius >= 15;
 }
 
@@ -1074,13 +1098,19 @@ function drawPreview() {
   const seg = segmentFromMouse(state.tool, mw, fromPose);
   let r;
   if (state.tool === 'arc' || state.tool === 'hairpin') {
-    r = buildArcFromEndpoints({x:fromPose.x,y:fromPose.y}, seg._yaw, mw, seg.radius);
+    if (seg._center) {
+      r = buildArcFromStoredCenter(seg._center, seg.radius, fromPose.x, fromPose.y, seg._yaw, seg._sweep);
+    } else {
+      r = buildArcFromEndpoints({x:fromPose.x,y:fromPose.y}, seg._yaw, mw, seg.radius);
+    }
   } else if (state.tool === 'chicane' && seg._subArcs) {
-    // 逐段拼锥筒
+    // 逐段拼锥筒（使用存储的圆心确保预览=放置）
     r = { cones:{blue:[],yellow:[],orange:[]}, end:{...fromPose} };
     let pose = { x: fromPose.x, y: fromPose.y, yaw: seg._yaw };
     for (const a of seg._subArcs) {
-      const sub = buildSegment({type:'arc',radius:a.R,turn:a.turn,angle:a.angle,_end:a._end}, pose);
+      const sub = a._center
+        ? buildArcFromStoredCenter(a._center, a.R, pose.x, pose.y, pose.yaw, a._sweep)
+        : buildSegment({type:'arc',radius:a.R,turn:a.turn,angle:a.angle,_end:a._end}, pose);
       r.cones.blue.push(...sub.cones.blue);
       r.cones.yellow.push(...sub.cones.yellow);
       r.cones.orange.push(...sub.cones.orange);
@@ -1155,6 +1185,25 @@ function renderPanel() {
     </div>`;
   }
   html += `</div>`;
+
+  // 诊断信息（锥筒宽度）
+  if (seg.cones && seg.cones.blue.length > 0) {
+    const widths = [];
+    for (let i = 0; i < Math.min(seg.cones.blue.length, seg.cones.yellow.length); i++) {
+      widths.push(Math.hypot(seg.cones.blue[i][0]-seg.cones.yellow[i][0], seg.cones.blue[i][1]-seg.cones.yellow[i][1]));
+    }
+    const minW = Math.min(...widths);
+    const maxW = Math.max(...widths);
+    const okW = Math.abs(minW - 3) < 0.01 && Math.abs(maxW - 3) < 0.01;
+    html += `<div class="panel-section"><div class="panel-section-title">宽度诊断 (蓝黄锥间距)</div>`;
+    html += `<div class="validate-result ${okW ? 'ok' : 'err'}">`;
+    html += `锥筒对数: ${widths.length}<br>`;
+    html += `最小宽度: ${minW.toFixed(3)}m<br>`;
+    html += `最大宽度: ${maxW.toFixed(3)}m<br>`;
+    html += `期望: 3.000m`;
+    if (!okW) html += `<br>⚠️ 宽度异常！`;
+    html += `</div></div>`;
+  }
 
   // 校验结果
   html += `<div class="panel-section"><div class="panel-section-title">规则校验</div>`;
@@ -1423,6 +1472,37 @@ function onMouseDown(e) {
       }
     }
 
+    // 优先检查：是否应闭合赛道（≥2 段且鼠标点击在起点 5m 内）
+    // 正确行为：新增一段直道从最后末端连到起点，保持所有已铺段不变
+    if (!state.closed && state.segments.length >= 2) {
+      const dToStart = Math.hypot(w.x - state.start.x, w.y - state.start.y);
+      if (dToStart < 5) {
+        pushUndo();
+        state.closed = true;
+        // 新增闭合直道：从最后末端 → 起点
+        const fromEnd = state.segments[state.segments.length - 1].end;
+        const closeLen = Math.hypot(fromEnd.x - state.start.x, fromEnd.y - state.start.y);
+        const closeYaw = Math.atan2(state.start.y - fromEnd.y, state.start.x - fromEnd.x);
+        const closeSeg = {
+          type: 'straight',
+          length: closeLen,
+          _yaw: closeYaw,
+          cones: { blue: [], yellow: [], orange: [] },
+          end: { x: state.start.x, y: state.start.y, yaw: closeYaw },
+          valid: true,
+          errors: []
+        };
+        state.segments.push(closeSeg);
+        rebuildChain();
+        state.selected = -1;
+        state.tool = null;
+        document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.remove('active'));
+        renderPanel();
+        updateStatus();
+        return;
+      }
+    }
+
     // 检查是否点击了已有段（选中）
     let clicked = -1;
     for (let i = state.segments.length - 1; i >= 0; i--) {
@@ -1438,6 +1518,11 @@ function onMouseDown(e) {
       state.selected = clicked;
       renderPanel();
       updateStatus();
+      return;
+    }
+
+    // 未选工具时，不铺设新段（只选段或闭合）
+    if (!state.tool) {
       return;
     }
 
@@ -1498,17 +1583,32 @@ function segmentFromMouse(tool, mw, fromPose) {
   if (tool === 'straight') {
     seg.length = Math.max(1, dist);
   } else if (tool === 'arc') {
-    const info = arcFromEndpoints({x:fromPose.x,y:fromPose.y}, snapAng, mw, state.arcRadius);
-    if (info) { seg.radius = info.R; seg.turn = info.turn; seg.angle = info.angle; seg._end = {x:mw.x,y:mw.y}; }
+    const R = Math.min(state.arcRadius, 200); // 限制最大半径
+    const info = arcFromEndpoints({x:fromPose.x,y:fromPose.y}, snapAng, mw, R);
+    if (info) {
+      seg.radius = info.R; seg.turn = info.turn; seg.angle = info.angle;
+      seg._end = {x:mw.x,y:mw.y};
+      // 存储圆心和扫角，确保 rebuild 时一致
+      seg._center = info.center;
+      seg._sweep = (info.turn * info.angle * Math.PI / 180);
+    }
   } else if (tool === 'hairpin') {
-    const info = arcFromEndpoints({x:fromPose.x,y:fromPose.y}, snapAng, mw, Math.max(state.arcRadius, dist/2));
-    if (info) { seg.radius = info.R; seg.turn = info.turn; seg._end = {x:mw.x,y:mw.y}; }
+    const R = Math.min(Math.max(state.arcRadius, dist/2), 200);
+    const info = arcFromEndpoints({x:fromPose.x,y:fromPose.y}, snapAng, mw, R);
+    if (info) {
+      seg.radius = info.R; seg.turn = info.turn;
+      seg._end = {x:mw.x,y:mw.y};
+      seg._center = info.center;
+      seg._sweep = (info.turn * 180 * Math.PI / 180);
+    }
   } else if (tool === 'slalom') {
     seg.pylons = Math.max(2, Math.round(dist / seg.spacing));
   } else if (tool === 'chicane') {
-    // 固定转角子弧链，自动选转向
-    const sub = buildChicaneSubArcs({x:fromPose.x,y:fromPose.y}, snapAng, mw, seg.radii, seg.angle, seg.turn);
-    if (sub) { seg._subArcs = sub; seg._end = sub[sub.length-1]._end; }
+    // 转向基于相对 heading 的方位角确定（固定，不翻转）
+    const targetAng = Math.atan2(mw.y - fromPose.y, mw.x - fromPose.x);
+    const chicTurn = angleDiff(targetAng, snapAng) >= 0 ? 1 : -1;
+    const sub = buildChicaneSubArcs({x:fromPose.x,y:fromPose.y}, snapAng, mw, seg.radii, seg.angle, chicTurn);
+    if (sub) { seg._subArcs = sub; seg._end = sub[sub.length-1]._end; seg.turn = chicTurn; }
   }
   return seg;
 }
