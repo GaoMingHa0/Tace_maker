@@ -370,6 +370,12 @@ body {
       <button class="tool-btn" id="btn-delete-cone" data-tool="deleteCone">
         <span class="icon">✕</span> 删锥筒
       </button>
+      <button class="tool-btn" data-tool="placeCone">
+        <span class="icon">＋</span> 放锥筒
+      </button>
+      <button class="tool-btn" id="btn-flip">
+        <span class="icon">⇄</span> 翻转
+      </button>
       <button class="tool-btn" id="btn-undo">
         <span class="icon">↶</span> 撤销 <span class="shortcut-hint">⌃Z</span>
       </button>
@@ -499,8 +505,11 @@ const state = {
   arcRadius: 20,               // 上次使用的弧段半径（记忆）
   // 闭合
   closed: false,               // 赛道是否已闭合
-  // 删筒
+  // 删筒 / 放筒
   hoverCone: null,             // {seg_idx,color,index} 当前悬停锥筒（高亮）
+  placedCones: [],             // [{x,y,color,key}] 手动放置的锥筒（独立于段）
+  placeColor: 'blue',          // 放筒工具当前选中颜色
+  _coneKey: 0,                 // 放筒唯一 key 计数
 };
 
 // ───── DOM 引用 ─────
@@ -798,6 +807,10 @@ function countCones() {
     b += s.cones.blue.length;
     y += s.cones.yellow.length;
     o += s.cones.orange.length;
+  }
+  // 手动放置的锥筒也计入
+  for (const pc of state.placedCones) {
+    if (pc.color === 'yellow') y++; else if (pc.color === 'orange') o++; else b++;
   }
   return { b, y, o };
 }
@@ -1097,8 +1110,38 @@ function render() {
     drawSegment(state.segments[i], i, i === state.selected);
   }
   drawPreview();
+  drawPlacedCones();
+  drawTimingLine();
   if (state.hoverCone) drawHoverCone();
   requestAnimationFrame(render);
+}
+
+// 绘制手动放置的锥筒
+function drawPlacedCones() {
+  const coneSize = Math.max(2.5, Math.min(6, state.cam.scale * 0.5));
+  for (const pc of state.placedCones) drawCone(pc.x, pc.y, colorOf(pc.color), coneSize);
+}
+function colorOf(color) {
+  return color === 'yellow' ? '#FFD700' : color === 'orange' ? '#FF8C00' : '#1E90FF';
+}
+
+// 绘制起终计时线（起点=终点，一根线，两端橙色锥筒 + 连线）
+function drawTimingLine() {
+  const coneSize = Math.max(2.5, Math.min(6, state.cam.scale * 0.5));
+  const tf = computeStartFinishLines();
+  const a = worldToScreen(tf.timing_start.p1[0], tf.timing_start.p1[1]);
+  const b = worldToScreen(tf.timing_start.p2[0], tf.timing_start.p2[1]);
+  // 连线
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,140,0,0.85)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+  // 两端锥筒
+  drawCone(tf.timing_start.p1[0], tf.timing_start.p1[1], '#FF8C00', coneSize * 1.2);
+  drawCone(tf.timing_start.p2[0], tf.timing_start.p2[1], '#FF8C00', coneSize * 1.2);
 }
 
 // 高亮当前悬停的待删锥筒（红环）—— 仅高亮被点中的单个锥筒
@@ -1123,6 +1166,26 @@ function drawHoverCone() {
    属性面板
    ============================================================ */
 function renderPanel() {
+  // 放筒模式：显示颜色选择器
+  if (state.tool === 'placeCone') {
+    const colors = [
+      { id: 'blue',   name: '蓝（左边界）', hex: '#1E90FF' },
+      { id: 'yellow', name: '黄（右边界）', hex: '#FFD700' },
+      { id: 'orange', name: '橙（起跑线）', hex: '#FF8C00' },
+    ];
+    let html = `<div class="panel-section"><div class="panel-section-title">放筒颜色</div>
+      <div class="field"><div style="display:flex;gap:8px;flex-direction:column">`;
+    for (const col of colors) {
+      const sel = state.placeColor === col.id ? 'border-color:#4a9eff;background:var(--bg-active)' : '';
+      html += `<button onclick="state.placeColor='${col.id}';renderPanel()" style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg-panel-2);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;${sel}">
+        <span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:${col.hex};"></span>${col.name}</button>`;
+    }
+    html += `</div></div></div>`;
+    html += `<div class="panel-section"><div class="panel-section-title">操作说明</div>
+      <div style="font-size:12px;color:var(--text-dim);line-height:1.7;">在画布上<strong>点击</strong>放置一个<strong>${colors.find(c=>c.id===state.placeColor).name.split('（')[0]}</strong>锥筒。<br>可连续放置多个。<br>选中其它工具即退出放筒模式。</div></div>`;
+    panelContent.innerHTML = html;
+    return;
+  }
   if (state.selected < 0 || state.selected >= state.segments.length) {
     panelContent.innerHTML = `<div class="panel-empty">
       在画布上<strong>点击</strong>铺设第一段赛道，<br>
@@ -1255,7 +1318,7 @@ function updateStatus() {
    撤销栈
    ============================================================ */
 function pushUndo() {
-  const snap = JSON.stringify({ start: state.start, segments: state.segments });
+  const snap = JSON.stringify({ start: state.start, segments: state.segments, placedCones: state.placedCones, _coneKey: state._coneKey });
   state.undoStack.push(snap);
   if (state.undoStack.length > UNDO_MAX) state.undoStack.shift();
 }
@@ -1264,6 +1327,8 @@ function undo() {
   const snap = JSON.parse(state.undoStack.pop());
   state.start = snap.start;
   state.segments = snap.segments;
+  state.placedCones = snap.placedCones || [];
+  state._coneKey = snap._coneKey || 0;
   state.selected = -1;
   rebuildChain();
   renderPanel();
@@ -1280,6 +1345,11 @@ function exportYAML() {
     for (const c of s.cones.yellow) allCones.yellow.push(c);
     for (const c of s.cones.orange) allCones.orange.push(c);
   }
+  // 手动放置的锥筒一并导出
+  for (const pc of state.placedCones) allCones[pc.color].push([pc.x, pc.y]);
+  // 起终计时线的两个橙色锥筒也加入 orange_cones
+  const tf = computeStartFinishLines();
+  allCones.orange.push(tf.timing_start.p1, tf.timing_start.p2);
 
   const fmt = (p) => `[${p[0].toFixed(3)}, ${p[1].toFixed(3)}, 0.0]`;
   const lines = [];
@@ -1305,6 +1375,17 @@ function exportYAML() {
   lines.push('');
   lines.push('  orange_cones:');
   for (const c of allCones.orange) lines.push(`    - ${fmt(c)}`);
+  lines.push('');
+  // 起终线由橙色锥桶定义。车辆沿 direction 方向第二次通过该线时完成一圈。
+  lines.push('  lines:');
+  lines.push('    timing_start:');
+  lines.push(`      p1: ${fmt(tf.timing_start.p1)}`);
+  lines.push(`      p2: ${fmt(tf.timing_start.p2)}`);
+  lines.push(`      direction: ${tf.timing_start.direction}`);
+  lines.push('    finish:');
+  lines.push(`      p1: ${fmt(tf.finish.p1)}`);
+  lines.push(`      p2: ${fmt(tf.finish.p2)}`);
+  lines.push(`      direction: ${tf.finish.direction}`);
 
   const yaml = lines.join('\n') + '\n';
   const blob = new Blob([yaml], { type: 'text/yaml' });
@@ -1343,6 +1424,10 @@ function drawPreviewCanvas() {
     for (const c of s.cones.yellow) pts.push(c);
     for (const c of s.cones.orange) pts.push(c);
   }
+  for (const pc of state.placedCones) pts.push([pc.x, pc.y]);
+  // 起终计时线端点也纳入包围盒
+  const tfPrev = computeStartFinishLines();
+  pts.push(tfPrev.timing_start.p1, tfPrev.timing_start.p2);
   if (pts.length < 2) return;
   const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
   const xMin = Math.min(...xs), xMax = Math.max(...xs);
@@ -1368,13 +1453,26 @@ function drawPreviewCanvas() {
   }
   previewCtx.stroke();
 
-  // 锥筒
+  // 锥筒（段锥 + 手动放置锥筒）
   const coneSize = Math.max(2, Math.min(5, scale * 0.4));
+  const drawPC = (c, color, sz) => { const p = toScreen(c[0],c[1]); previewCtx.fillStyle=color; previewCtx.beginPath(); previewCtx.arc(p.x,p.y,sz,0,Math.PI*2); previewCtx.fill(); };
   for (const s of state.segments) {
-    for (const c of s.cones.blue) { const p = toScreen(c[0],c[1]); previewCtx.fillStyle='#1E90FF'; previewCtx.beginPath(); previewCtx.arc(p.x,p.y,coneSize,0,Math.PI*2); previewCtx.fill(); }
-    for (const c of s.cones.yellow) { const p = toScreen(c[0],c[1]); previewCtx.fillStyle='#FFD700'; previewCtx.beginPath(); previewCtx.arc(p.x,p.y,coneSize,0,Math.PI*2); previewCtx.fill(); }
-    for (const c of s.cones.orange) { const p = toScreen(c[0],c[1]); previewCtx.fillStyle='#FF8C00'; previewCtx.beginPath(); previewCtx.arc(p.x,p.y,coneSize*1.2,0,Math.PI*2); previewCtx.fill(); }
+    for (const c of s.cones.blue) drawPC(c, '#1E90FF', coneSize);
+    for (const c of s.cones.yellow) drawPC(c, '#FFD700', coneSize);
+    for (const c of s.cones.orange) drawPC(c, '#FF8C00', coneSize * 1.2);
   }
+  for (const pc of state.placedCones) drawPC([pc.x, pc.y], colorOf(pc.color), coneSize);
+  // 起终计时线（预览）
+  const tfP = computeStartFinishLines();
+  const ta = toScreen(tfP.timing_start.p1[0], tfP.timing_start.p1[1]);
+  const tb = toScreen(tfP.timing_start.p2[0], tfP.timing_start.p2[1]);
+  previewCtx.strokeStyle = 'rgba(255,140,0,0.85)';
+  previewCtx.lineWidth = 2;
+  previewCtx.setLineDash([6, 4]);
+  previewCtx.beginPath(); previewCtx.moveTo(ta.x, ta.y); previewCtx.lineTo(tb.x, tb.y); previewCtx.stroke();
+  previewCtx.setLineDash([]);
+  drawPC(tfP.timing_start.p1, '#FF8C00', coneSize * 1.2);
+  drawPC(tfP.timing_start.p2, '#FF8C00', coneSize * 1.2);
   // 起点
   const sp = toScreen(state.start.x, state.start.y);
   previewCtx.fillStyle = '#66bb6a';
@@ -1400,8 +1498,8 @@ function canvasPos(e) {
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
-// 删筒：在屏幕坐标 (sx,sy) 附近找最近的锥筒（命中半径 HIT_PX），返回 {seg_idx,color,index} 或 null
-// 优先级：蓝/黄锥（赛道边界）与橙锥（起始线）同等对待，单一命中即删除
+// 删筒/高亮：在屏幕坐标 (sx,sy) 附近找最近的锥筒（命中半径 HIT_PX）
+// 返回 {seg_idx,color,index}（段锥）或 {placed:true,index,key,color}（放置锥），找不到返回 null
 function findConeAt(sx, sy) {
   const HIT_PX = 12;
   let best = null, bestD = HIT_PX;
@@ -1417,7 +1515,25 @@ function findConeAt(sx, sy) {
       }
     }
   }
+  // 也搜索手动放置的锥筒
+  for (let i = 0; i < state.placedCones.length; i++) {
+    const pc = state.placedCones[i];
+    const s = worldToScreen(pc.x, pc.y);
+    const d = Math.hypot(s.x - sx, s.y - sy);
+    if (d < bestD) { bestD = d; best = { placed: true, index: i, key: pc.key, color: pc.color }; }
+  }
   return best;
+}
+
+// 删筒：统一处理命中结果（段锥按坐标持久化标记；放置锥直接从数组移除）
+function deleteConeByHit(hit) {
+  if (hit.placed) {
+    state.placedCones.splice(hit.index, 1);
+  } else {
+    const seg = state.segments[hit.seg_idx];
+    const cone = seg.cones[hit.color][hit.index];
+    markConeDeleted(hit.seg_idx, cone[0], cone[1]);  // 按世界坐标标记，重建后仍剔除
+  }
 }
 
 // 删筒持久化：用锥筒世界坐标（1cm 量化）作 key，存入段级 Set
@@ -1449,6 +1565,26 @@ function applyConeDeletions(seg, cones) {
   };
 }
 
+// 起终计时线：垂直于朝向、跨度 ±W，返回 {p1,p2,direction}
+// p1/p2 为橙色锥筒位置（p1 在朝向右侧 -W，p2 在朝向左侧 +W），direction 描述车辆穿越方向
+function computeTimingLine(x, y, yaw) {
+  const lx = -Math.sin(yaw), ly = Math.cos(yaw);   // 左侧法向
+  const p1 = [x - W * lx, y - W * ly, 0.0];        // 右侧 -W
+  const p2 = [x + W * lx, y + W * ly, 0.0];        // 左侧 +W
+  // 朝向归一到 [0,2π)，取最近方位
+  let a = yaw % (2 * Math.PI);
+  if (a < 0) a += 2 * Math.PI;
+  const dirs = ['positive_x', 'positive_y', 'negative_x', 'negative_y'];
+  const direction = dirs[Math.round(a / (Math.PI / 2)) % 4];
+  return { p1, p2, direction };
+}
+// 从起点位姿计算起终线（起点 = 终点，同一根线）
+function computeStartFinishLines() {
+  const { x, y, yaw } = state.start;
+  const line = computeTimingLine(x, y, yaw);
+  return { timing_start: { ...line }, finish: { ...line } };
+}
+
 function onMouseDown(e) {
   const pos = canvasPos(e);
   state.mouse = { x: pos.x, y: pos.y, down: true, button: e.button };
@@ -1469,13 +1605,19 @@ function onMouseDown(e) {
     if (state.tool === 'deleteCone') {
       const hit = findConeAt(pos.x, pos.y);
       if (hit) {
-        const seg = state.segments[hit.seg_idx];
-        const cone = seg.cones[hit.color][hit.index];
         pushUndo();
-        markConeDeleted(hit.seg_idx, cone[0], cone[1]);  // 仅删除被点中的单个锥筒
+        deleteConeByHit(hit);                            // 仅删除被点中的单个锥筒
         rebuildChain();                                  // 重建 + 过滤剔除
         updateStatus();
       }
+      return;
+    }
+
+    // ★ 放筒模式：在点击处放置一个指定颜色的锥筒
+    if (state.tool === 'placeCone') {
+      pushUndo();
+      state.placedCones.push({ x: w.x, y: w.y, color: state.placeColor, key: ++state._coneKey });
+      updateStatus();
       return;
     }
 
@@ -1795,6 +1937,10 @@ function fitView() {
     for (const c of s.cones.yellow) pts.push(c);
     for (const c of s.cones.orange) pts.push(c);
   }
+  for (const pc of state.placedCones) pts.push([pc.x, pc.y]);
+  // 起终计时线端点
+  const tfFit = computeStartFinishLines();
+  pts.push(tfFit.timing_start.p1, tfFit.timing_start.p2);
   if (pts.length < 2) return;
   const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
   const xMin = Math.min(...xs), xMax = Math.max(...xs);
@@ -1832,6 +1978,8 @@ function setTool(tool) {
   document.querySelectorAll('.tool-btn[data-tool]').forEach(b => {
     b.classList.toggle('active', b.dataset.tool === tool);
   });
+  renderPanel();   // 切换工具后刷新属性面板（如放筒模式的颜色选择器）
+  updateStatus();
 }
 
 function rotateDirection() {
@@ -1897,12 +2045,14 @@ function init() {
     });
   });
   document.getElementById('btn-undo').addEventListener('click', undo);
+  document.getElementById('btn-flip').addEventListener('click', rotateDirection);
   document.getElementById('btn-close').addEventListener('click', closeTrack);
   document.getElementById('btn-clear').addEventListener('click', () => {
-    if (state.segments.length === 0) return;
-    if (confirm('清空所有赛道段？')) {
+    if (state.segments.length === 0 && state.placedCones.length === 0) return;
+    if (confirm('清空所有赛道段和放置的锥筒？')) {
       pushUndo();
       state.segments = [];
+      state.placedCones = [];
       state.selected = -1;
       state.closed = false;
       rebuildChain(); renderPanel(); updateStatus();
